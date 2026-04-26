@@ -6,3 +6,4 @@ httpx==0.28.1
 GitPython==3.1.43
 SQLAlchemy==2.0.36
 python-dotenv==1.0.1
+PyGithub==2.5.0

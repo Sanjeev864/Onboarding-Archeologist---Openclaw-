@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from ..models.analysis import Decision, GhostCodeFinding, KnowledgeOwner, Repository
+from ..models.analysis import BusFactorAlert, Decision, GhostCodeFinding, KnowledgeOwner, Repository, ScarTissuePattern
 
 
 class Oracle:
@@ -42,6 +42,26 @@ class Oracle:
             )
             evidence = [f"{item.path}: {item.reason}, last touched {item.last_touched_days} days ago" for item in ghosts]
             answer = "These files are removal-review candidates, not automatic deletes. Confirm runtime references and tests before removing them."
+        elif any(term in q for term in ("scar", "defensive", "retry", "fallback", "incident", "outage")):
+            scars = (
+                db.query(ScarTissuePattern)
+                .filter(ScarTissuePattern.repository_id == repository_id)
+                .order_by(ScarTissuePattern.confidence.desc())
+                .limit(8)
+                .all()
+            )
+            evidence = [f"{item.file_path}: {item.pattern_type} ({item.severity}) - {item.related_incident}" for item in scars]
+            answer = "These defensive patterns may encode production history. Treat them as context to understand before refactoring."
+        elif any(term in q for term in ("risk", "single point", "factor")):
+            alerts = (
+                db.query(BusFactorAlert)
+                .filter(BusFactorAlert.repository_id == repository_id)
+                .order_by(BusFactorAlert.concentration.desc())
+                .limit(8)
+                .all()
+            )
+            evidence = [f"{item.critical_person}: {round(item.concentration * 100, 1)}% concentration across {item.areas_affected}" for item in alerts]
+            answer = "Bus-factor risk is highest where one contributor dominates recent changes across important paths."
         else:
             decisions = db.query(Decision).filter(Decision.repository_id == repository_id).limit(3).all()
             owners = db.query(KnowledgeOwner).filter(KnowledgeOwner.repository_id == repository_id).limit(3).all()
