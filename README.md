@@ -42,6 +42,18 @@ VITE_API_URL=http://localhost:8000
 
 Public repositories can be analyzed without a token. Private repositories require a token with repository read access.
 
+## OpenClaw Integration
+
+The repository includes a local OpenClaw skill in `openclaw/skills/archaeologist`.
+
+Install it with:
+
+```powershell
+.\scripts\install-openclaw-skill.ps1
+```
+
+See `docs/OPENCLAW_INTEGRATION.md` for setup, commands, and API smoke tests.
+
 ## Development
 
 Backend:

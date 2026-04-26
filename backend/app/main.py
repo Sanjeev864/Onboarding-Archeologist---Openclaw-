@@ -27,6 +27,14 @@ from .schemas import AnalyzeRequest, AnalysisOut, AnswerOut, JobOut, QuestionReq
 from .services.analyzer import RepositoryAnalyzer, scar_to_model
 from .services.github_client import GitHubClientEnhanced
 from .services.onboarding_journey_generator import OnboardingJourneyGenerator
+from .services.openclaw_formatter import (
+    format_analysis,
+    format_answer,
+    format_bus_factor,
+    format_decisions,
+    format_ghost_code,
+    format_onboarding,
+)
 from .services.oracle import Oracle
 
 Base.metadata.create_all(bind=engine)
@@ -321,6 +329,46 @@ def get_metrics(db: Session = Depends(get_db)):
         "scar_tissue_patterns": db.query(ScarTissuePattern).count(),
         "bus_factor_alerts": db.query(BusFactorAlert).count(),
     }
+
+
+@app.post("/api/openclaw/analyze")
+def openclaw_analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
+    formatted = format_analysis(_run_analysis(request, db, create_job=True))
+    return {"text": formatted.text, "repository_id": formatted.repository_id}
+
+
+@app.post("/api/openclaw/ask")
+def openclaw_ask(request: QuestionRequest, db: Session = Depends(get_db)):
+    answer, evidence = Oracle().answer(db, request.repository_id, request.question)
+    return {"text": format_answer(AnswerOut(answer=answer, evidence=evidence))}
+
+
+@app.get("/api/openclaw/repositories/latest")
+def openclaw_latest_repository(db: Session = Depends(get_db)):
+    row = db.query(Repository).order_by(Repository.analyzed_at.desc()).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="No analyzed repository found")
+    return {"repository_id": row.id, "owner": row.owner, "repo": row.name}
+
+
+@app.get("/api/openclaw/repositories/{repository_id}/decisions")
+def openclaw_decisions(repository_id: int, db: Session = Depends(get_db)):
+    return {"text": format_decisions(_analysis_out(db, _require_repo(db, repository_id)))}
+
+
+@app.get("/api/openclaw/repositories/{repository_id}/bus-factor")
+def openclaw_bus_factor(repository_id: int, db: Session = Depends(get_db)):
+    return {"text": format_bus_factor(_analysis_out(db, _require_repo(db, repository_id)))}
+
+
+@app.get("/api/openclaw/repositories/{repository_id}/ghost-code")
+def openclaw_ghost_code(repository_id: int, db: Session = Depends(get_db)):
+    return {"text": format_ghost_code(_analysis_out(db, _require_repo(db, repository_id)))}
+
+
+@app.get("/api/openclaw/repositories/{repository_id}/onboarding/{level}")
+def openclaw_onboarding(repository_id: int, level: str, db: Session = Depends(get_db)):
+    return {"text": format_onboarding(_analysis_out(db, _require_repo(db, repository_id)), level)}
 
 
 def _analysis_out(db: Session, repository: Repository) -> AnalysisOut:
