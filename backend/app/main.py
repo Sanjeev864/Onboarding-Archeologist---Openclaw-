@@ -36,6 +36,7 @@ from .services.openclaw_formatter import (
     format_onboarding,
 )
 from .services.oracle import Oracle
+from .services.report_formatter import ReportFormatter, HTMLReportFormatter
 
 Base.metadata.create_all(bind=engine)
 ensure_sqlite_schema()
@@ -58,6 +59,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from .agents.orchestrator import AnalysisOrchestrationAgent, OnboardingOrchestrationAgent
+
+# Initialize agents
+analysis_orchestrator = AnalysisOrchestrationAgent()
+onboarding_orchestrator = OnboardingOrchestrationAgent()
+
+from .agents.evidence_agents import (
+    RepositoryPerceptionAgent,
+    ArchitecturalDecisionAgent,
+    OwnershipAnalysisAgent,
+    GhostCodeDetectorAgent,
+    BusFactorEvaluatorAgent,
+    ScarTissueAnalyzerAgent,
+    OnboardingPathGeneratorAgent
+)
+
+# Initialize agents at module level
+perception_agent = RepositoryPerceptionAgent()
+decision_agent = ArchitecturalDecisionAgent()
+ownership_agent = OwnershipAnalysisAgent()
+ghost_code_agent = GhostCodeDetectorAgent()
+bus_factor_agent = BusFactorEvaluatorAgent()
+scar_tissue_agent = ScarTissueAnalyzerAgent()
+onboarding_agent = OnboardingPathGeneratorAgent()
+
 
 @app.get("/health")
 def health():
@@ -73,6 +99,158 @@ def analyze(request: AnalyzeRequest, db: Session = Depends(get_db)):
 def analyze_advanced(request: AnalyzeRequest, db: Session = Depends(get_db)):
     return _run_analysis(request, db, create_job=True)
 
+@app.get("/api/v2/analyze-autonomous-report")
+async def analyze_autonomous_report(owner: str, repo: str, format: str = "text"):
+    """Get analysis as formatted report (text or HTML)"""
+    try:
+        # Run analysis
+        result = await analyze_autonomous(owner, repo)
+        
+        if format == "html":
+            html_report = HTMLReportFormatter.format_analysis_as_html(result)
+            return {"report": html_report, "format": "html"}
+        else:  # text
+            text_report = ReportFormatter.format_analysis_report(result)
+            return {"report": text_report, "format": "text"}
+    
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+from .services.agent_pool import PoolManager
+from .services.cache import analysis_cache
+
+@app.post("/api/v2/analyze-autonomous")
+async def analyze_autonomous(owner: str, repo: str, repo_path: str = None, use_cache: bool = True):
+    """Analyze with pooling and caching"""
+    try:
+        # Check cache first
+        if use_cache:
+            cached_result = analysis_cache.get(owner, repo)
+            if cached_result:
+                return {
+                    **cached_result,
+                    "message": "Result from cache",
+                    "source": "cache"
+                }
+        
+        # Get agents from pools
+        perception_agent = await perception_pool.acquire()
+        decision_agent = await decision_pool.acquire()
+        ownership_agent = await ownership_pool.acquire()
+        ghost_code_agent = await ghost_code_pool.acquire()
+        bus_factor_agent = await bus_factor_pool.acquire()
+        scar_tissue_agent = await scar_tissue_pool.acquire()
+        
+        try:
+            # Run analysis
+            analysis_input = {
+                "owner": owner,
+                "repo": repo,
+                "repo_path": repo_path or f"/tmp/{owner}_{repo}",
+                "analysis_scope": "full"
+            }
+            
+            # Store in agent memory
+            for agent in [perception_agent, decision_agent, ownership_agent,
+                         ghost_code_agent, bus_factor_agent, scar_tissue_agent]:
+                agent.memory["owner"] = owner
+                agent.memory["repo"] = repo
+                agent.memory["repo_path"] = analysis_input["repo_path"]
+                agent.memory["analysis_input"] = analysis_input
+            
+            # Run all agents
+            perception_result = await perception_agent.run_cycle(analysis_input)
+            decision_result = await decision_agent.run_cycle(analysis_input)
+            ownership_result = await ownership_agent.run_cycle(analysis_input)
+            ghost_code_result = await ghost_code_agent.run_cycle(analysis_input)
+            bus_factor_result = await bus_factor_agent.run_cycle(analysis_input)
+            scar_tissue_result = await scar_tissue_agent.run_cycle(analysis_input)
+            
+            result = {
+                "status": "success",
+                "repository": f"{owner}/{repo}",
+                "analysis_mode": "autonomous_agents_with_pooling_and_cache",
+                "timestamp": datetime.now().isoformat(),
+                "agents_executed": 6,
+                "source": "real_analysis",
+                "agent_results": {
+                    "perception": perception_result,
+                    "decisions": decision_result,
+                    "ownership": ownership_result,
+                    "ghost_code": ghost_code_result,
+                    "bus_factor": bus_factor_result,
+                    "scar_tissue": scar_tissue_result
+                },
+                "agent_summaries": {
+                    "perception": perception_agent.get_summary(),
+                    "decisions": decision_agent.get_summary(),
+                    "ownership": ownership_agent.get_summary(),
+                    "ghost_code": ghost_code_agent.get_summary(),
+                    "bus_factor": bus_factor_agent.get_summary(),
+                    "scar_tissue": scar_tissue_agent.get_summary()
+                },
+                "decision_traces": {
+                    "perception": perception_agent.get_decision_trace(),
+                    "decisions": decision_agent.get_decision_trace(),
+                    "ownership": ownership_agent.get_decision_trace(),
+                    "ghost_code": ghost_code_agent.get_decision_trace(),
+                    "bus_factor": bus_factor_agent.get_decision_trace(),
+                    "scar_tissue": scar_tissue_agent.get_decision_trace()
+                },
+                "message": "All agents completed analysis with pooling and cache"
+            }
+            
+            # Cache result
+            if use_cache:
+                analysis_cache.set(owner, repo, result)
+            
+            return result
+        
+        finally:
+            # Always return agents to pool
+            perception_pool.release(perception_agent)
+            decision_pool.release(decision_agent)
+            ownership_pool.release(ownership_agent)
+            ghost_code_pool.release(ghost_code_agent)
+            bus_factor_pool.release(bus_factor_agent)
+            scar_tissue_pool.release(scar_tissue_agent)
+    
+    except Exception as e:
+        logger.error(f"Autonomous analysis failed: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "agents_attempted": 6
+        }
+
+
+@app.get("/api/v2/system-stats")
+async def system_stats():
+    """Get system performance statistics"""
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "pools": PoolManager.get_stats(),
+        "cache": analysis_cache.get_stats()
+    }
+
+@app.get("/api/v2/agent-decision-trace-report/{agent_name}")
+async def agent_decision_trace_report(agent_name: str):
+    """Get formatted decision trace"""
+    result = await agent_decision_trace(agent_name)
+    
+    if "error" in result:
+        return result
+    
+    formatted = ReportFormatter.format_decision_trace_report(
+        agent_name,
+        result.get("decision_trace", [])
+    )
+    
+    return {
+        "agent_name": agent_name,
+        "report": formatted,
+        "format": "text"
+    }
 
 def _run_analysis(request: AnalyzeRequest, db: Session, create_job: bool = False) -> AnalysisOut:
     job: AnalysisJob | None = None
@@ -160,7 +338,395 @@ def _run_analysis(request: AnalyzeRequest, db: Session, create_job: bool = False
     db.refresh(repository)
     return _analysis_out(db, repository)
 
+# ============================================================================
+# AUTONOMOUS AGENT ENDPOINTS
+# ============================================================================
 
+@app.post("/api/v2/analyze-autonomous")
+async def analyze_autonomous(owner: str, repo: str, repo_path: str = None):
+    """Analyze repository using autonomous agents with REAL DATA"""
+    try:
+        analysis_input = {
+            "owner": owner,
+            "repo": repo,
+            "repo_path": repo_path or f"/tmp/{owner}_{repo}",
+            "analysis_scope": "full"
+        }
+        
+        # ✨ NEW: Store owner and repo in agent memory BEFORE running
+        for agent in [perception_agent, decision_agent, ownership_agent,
+                     ghost_code_agent, bus_factor_agent, scar_tissue_agent]:
+            agent.memory["owner"] = owner
+            agent.memory["repo"] = repo
+            agent.memory["repo_path"] = analysis_input["repo_path"]
+            agent.memory["analysis_input"] = analysis_input
+        
+        print(f"🤖 Starting autonomous analysis: {owner}/{repo}")
+        
+        # Run all agents - they'll now use REAL data from services
+        perception_result = await perception_agent.run_cycle(analysis_input)
+        decision_result = await decision_agent.run_cycle(analysis_input)
+        ownership_result = await ownership_agent.run_cycle(analysis_input)
+        ghost_code_result = await ghost_code_agent.run_cycle(analysis_input)
+        bus_factor_result = await bus_factor_agent.run_cycle(analysis_input)
+        scar_tissue_result = await scar_tissue_agent.run_cycle(analysis_input)
+        
+        agent_results = {
+            "perception": perception_result,
+            "decisions": decision_result,
+            "ownership": ownership_result,
+            "ghost_code": ghost_code_result,
+            "bus_factor": bus_factor_result,
+            "scar_tissue": scar_tissue_result
+        }
+        
+        agent_summaries = {
+            "perception": perception_agent.get_summary(),
+            "decisions": decision_agent.get_summary(),
+            "ownership": ownership_agent.get_summary(),
+            "ghost_code": ghost_code_agent.get_summary(),
+            "bus_factor": bus_factor_agent.get_summary(),
+            "scar_tissue": scar_tissue_agent.get_summary()
+        }
+        
+        decision_traces = {
+            "perception": perception_agent.get_decision_trace(),
+            "decisions": decision_agent.get_decision_trace(),
+            "ownership": ownership_agent.get_decision_trace(),
+            "ghost_code": ghost_code_agent.get_decision_trace(),
+            "bus_factor": bus_factor_agent.get_decision_trace(),
+            "scar_tissue": scar_tissue_agent.get_decision_trace()
+        }
+        
+        return {
+            "status": "success",
+            "repository": f"{owner}/{repo}",
+            "analysis_mode": "autonomous_agents_with_real_data",  # Updated
+            "timestamp": datetime.now().isoformat(),
+            "agents_executed": 6,
+            "data_source": "real_services",  # New
+            "agent_results": agent_results,
+            "agent_summaries": agent_summaries,
+            "decision_traces": decision_traces,
+            "message": "All agents completed analysis with real data"
+        }
+    
+    except Exception as e:
+        logger.error(f"Autonomous analysis failed: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "agents_attempted": 6
+        }
+
+
+@app.post("/api/v2/onboarding-autonomous")
+async def onboarding_autonomous(
+    repo_id: int,
+    level: str = "junior"
+):
+    """
+    Generate onboarding path using Onboarding Path Generator Agent.
+    
+    Adapts to:
+    - level: "junior", "mid", or "senior"
+    - Time available: defaults to 40 hours (5 days)
+    
+    Uses findings from previous analysis to create personalized journey.
+    """
+    try:
+        from sqlalchemy.orm import Session
+        
+        # Get the analysis from database
+        db: Session = next(get_db())
+        
+        repo = db.query(Repository).filter(Repository.id == repo_id).first()
+        if not repo:
+            return {"status": "error", "error": "Repository not found"}
+        
+        # Prepare onboarding input
+        onboarding_input = {
+            "level": level,
+            "analysis": _analysis_out(db, repo).model_dump(mode="json"),
+            "time_available_hours": 40,
+            "preferences": {}
+        }
+        
+        # Run agent
+        result = await onboarding_agent.run_cycle(onboarding_input)
+        
+        return {
+            "status": "success",
+            "repository_id": repo_id,
+            "learner_level": level,
+            "agent_summary": onboarding_agent.get_summary(),
+            "path_generated": result,
+            "agent_trace": onboarding_agent.get_execution_trace()
+        }
+    
+    except Exception as e:
+        logger.error(f"Onboarding generation failed: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+
+
+@app.get("/api/v2/agent-status")
+async def agent_status():
+    """
+    Get status of all autonomous agents.
+    
+    Returns:
+    - Agents initialized
+    - Last execution details
+    - Decision histories
+    - Memory snapshots
+    """
+    return {
+        "status": "operational",
+        "agents": {
+            "perception": perception_agent.get_summary(),
+            "decisions": decision_agent.get_summary(),
+            "ownership": ownership_agent.get_summary(),
+            "ghost_code": ghost_code_agent.get_summary(),
+            "bus_factor": bus_factor_agent.get_summary(),
+            "scar_tissue": scar_tissue_agent.get_summary(),
+            "onboarding": onboarding_agent.get_summary()
+        },
+        "timestamp": datetime.now().isoformat()
+    }
+
+@app.get("/api/v2/agent-decision-trace/{agent_name}")
+async def agent_decision_trace(agent_name: str):
+    """
+    Get decision trace for a specific agent.
+    
+    Shows all thoughts, decisions, and execution results.
+    Useful for understanding agent reasoning.
+    """
+    agent_map = {
+        "perception": perception_agent,
+        "decisions": decision_agent,
+        "ownership": ownership_agent,
+        "ghost_code": ghost_code_agent,
+        "bus_factor": bus_factor_agent,
+        "scar_tissue": scar_tissue_agent,
+        "onboarding": onboarding_agent
+    }
+    
+    agent = agent_map.get(agent_name.lower())
+    if not agent:
+        return {
+            "error": f"Agent '{agent_name}' not found",
+            "available_agents": list(agent_map.keys())
+        }
+    
+    return {
+        "agent_id": agent.agent_id,
+        "agent_name": agent.agent_name,
+        "decision_trace": agent.get_decision_trace(),
+        "execution_trace": agent.get_execution_trace(),
+        "memory_snapshot": agent.memory,
+        "summary": agent.get_summary()
+    }
+
+
+@app.get("/api/v2/agent-decision-trace/{agent_name}")
+async def agent_decision_trace(agent_name: str):
+    """
+    Get decision trace for a specific agent.
+    
+    Useful for debugging and understanding agent reasoning.
+    Shows all thoughts, decisions, and execution results.
+    """
+    agent_map = {
+        "perception": perception_agent,
+        "decisions": decision_agent,
+        "ownership": ownership_agent,
+        "ghost_code": ghost_code_agent,
+        "bus_factor": bus_factor_agent,
+        "scar_tissue": scar_tissue_agent,
+        "onboarding": onboarding_agent
+    }
+    
+    agent = agent_map.get(agent_name)
+    if not agent:
+        return {"error": f"Agent '{agent_name}' not found"}
+    
+    return {
+        "agent_id": agent.agent_id,
+        "agent_name": agent.agent_name,
+        "decision_trace": agent.get_decision_trace(),
+        "execution_trace": agent.get_execution_trace(),
+        "memory_snapshot": agent.memory
+    }
+
+
+@app.post("/api/v2/submit-agent-feedback")
+async def submit_agent_feedback(
+    agent_id: str,
+    execution_id: str,
+    feedback_type: str,  # "positive", "negative", "partial"
+    feedback_text: str,
+    rating: float = 0.5
+):
+    """
+    Submit feedback about agent decisions for learning/adaptation.
+    
+    Helps agents improve over time:
+    - positive: Agent performed well, reinforce this approach
+    - negative: Agent missed something, adjust thresholds
+    - partial: Mixed results, refine strategy
+    
+    Rating: 0.0 (terrible) to 1.0 (perfect)
+    """
+    try:
+        agent_map = {
+            "perception": perception_agent,
+            "decisions": decision_agent,
+            "ownership": ownership_agent,
+            "ghost_code": ghost_code_agent,
+            "bus_factor": bus_factor_agent,
+            "scar_tissue": scar_tissue_agent,
+            "onboarding": onboarding_agent
+        }
+        
+        agent = agent_map.get(agent_id)
+        if not agent:
+            return {"status": "error", "error": f"Agent '{agent_id}' not found"}
+        
+        # Record feedback in agent memory
+        if "feedback_history" not in agent.memory:
+            agent.memory["feedback_history"] = []
+        
+        agent.memory["feedback_history"].append({
+            "execution_id": execution_id,
+            "type": feedback_type,
+            "text": feedback_text,
+            "rating": rating,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Adapt agent based on feedback
+        if feedback_type == "positive" and rating > 0.7:
+            agent.memory["confidence_boost"] = min(1.5, agent.memory.get("confidence_boost", 1.0) + 0.1)
+        elif feedback_type == "negative" and rating < 0.3:
+            agent.memory["confidence_reduction"] = min(0.9, agent.memory.get("confidence_reduction", 1.0) + 0.1)
+        
+        return {
+            "status": "success",
+            "feedback_recorded": True,
+            "agent_adapted": True,
+            "agent_id": agent_id
+        }
+    
+    except Exception as e:
+        logger.error(f"Feedback processing failed: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+@app.post("/api/v2/analyze-autonomous")
+async def analyze_autonomous(owner: str, repo: str, repo_path: str = None):
+    """
+    Analyze repository using autonomous agent workflow.
+    
+    Runs all agents in parallel:
+    - Repository Perception Agent
+    - Architectural Decision Agent
+    - Ownership Analysis Agent
+    - Ghost Code Detector Agent
+    - Bus Factor Evaluator Agent
+    - Scar Tissue Analyzer Agent
+    
+    Query params:
+    - owner: Repository owner (e.g., "anthropic")
+    - repo: Repository name (e.g., "claude-code")
+    - repo_path: Local path to repository (optional)
+    """
+    try:
+        import asyncio
+        
+        # Prepare input for all agents
+        analysis_input = {
+            "owner": owner,
+            "repo": repo,
+            "repo_path": repo_path or f"/tmp/{owner}_{repo}",
+            "analysis_scope": "full"
+        }
+        
+        # Store input in agent memory for later use
+        for agent in [
+            perception_agent, decision_agent, ownership_agent,
+            ghost_code_agent, bus_factor_agent, scar_tissue_agent
+        ]:
+            agent.memory["analysis_input"] = analysis_input
+        
+        # Run all analysis agents in parallel
+        print(f"🤖 Starting autonomous analysis: {owner}/{repo}")
+        
+        perception_result = await perception_agent.run_cycle(analysis_input)
+        decision_result = await decision_agent.run_cycle(analysis_input)
+        ownership_result = await ownership_agent.run_cycle(analysis_input)
+        ghost_code_result = await ghost_code_agent.run_cycle(analysis_input)
+        bus_factor_result = await bus_factor_agent.run_cycle(analysis_input)
+        scar_tissue_result = await scar_tissue_agent.run_cycle(analysis_input)
+        
+        # Aggregate results
+        agent_results = {
+            "perception": perception_result,
+            "decisions": decision_result,
+            "ownership": ownership_result,
+            "ghost_code": ghost_code_result,
+            "bus_factor": bus_factor_result,
+            "scar_tissue": scar_tissue_result
+        }
+        
+        # Get agent summaries and decision traces
+        agent_summaries = {
+            "perception": perception_agent.get_summary(),
+            "decisions": decision_agent.get_summary(),
+            "ownership": ownership_agent.get_summary(),
+            "ghost_code": ghost_code_agent.get_summary(),
+            "bus_factor": bus_factor_agent.get_summary(),
+            "scar_tissue": scar_tissue_agent.get_summary()
+        }
+        
+        decision_traces = {
+            "perception": perception_agent.get_decision_trace(),
+            "decisions": decision_agent.get_decision_trace(),
+            "ownership": ownership_agent.get_decision_trace(),
+            "ghost_code": ghost_code_agent.get_decision_trace(),
+            "bus_factor": bus_factor_agent.get_decision_trace(),
+            "scar_tissue": scar_tissue_agent.get_decision_trace()
+        }
+        
+        return {
+            "status": "success",
+            "repository": f"{owner}/{repo}",
+            "analysis_mode": "autonomous_agents",
+            "timestamp": datetime.now().isoformat(),
+            "agents_executed": 6,
+            "agent_results": agent_results,
+            "agent_summaries": agent_summaries,
+            "decision_traces": decision_traces,
+            "message": "All agents completed analysis successfully"
+        }
+    
+    except Exception as e:
+        logger.error(f"Autonomous analysis failed: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "agents_attempted": 6
+        }
+
+    
+    
 @app.get("/api/repositories")
 def repositories(db: Session = Depends(get_db)):
     rows = db.query(Repository).order_by(Repository.analyzed_at.desc()).all()
