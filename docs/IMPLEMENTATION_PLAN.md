@@ -40,7 +40,8 @@ This document provides a complete technical implementation plan to transform the
 ```
 
 **Specific Additions:**
-- `anthropic_api_key: str` - Free Anthropic API for analysis
+- `llm_provider: str` - Defaults to local/free Ollama for analysis enrichment
+- `anthropic_api_key: str` - Optional only when `LLM_PROVIDER=anthropic`
 - `cache_dir: str` - Local file-based cache for LLM responses
 - `queue_type: str` - "memory" | "redis" (default: "memory")
 - `log_level: str` - "DEBUG" | "INFO" | "WARNING"

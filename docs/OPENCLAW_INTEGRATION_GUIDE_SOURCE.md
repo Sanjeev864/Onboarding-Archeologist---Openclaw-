@@ -1,6 +1,10 @@
 # OpenClaw Integration Guide for Onboarding Archaeologist
 ## Complete Step-by-Step Implementation (12 Parts)
 
+> Current project default: repository analysis uses the local/free Ollama path
+> (`LLM_PROVIDER=ollama`). Anthropic/Claude is optional and should only be
+> selected if you intentionally set `LLM_PROVIDER=anthropic` and provide an API key.
+
 ---
 
 ## PART 1: INSTALL OPENCLAW (5 minutes)
@@ -72,18 +76,18 @@ openclaw onboard --install-daemon
 ```
 
 This wizard will ask you to:
-1. **Choose an AI Provider** - Select "Anthropic" (free API tier)
-2. **Enter API Key** - Get free key from https://console.anthropic.com
+1. **Choose an AI Provider** - Select a local/Ollama provider when available
+2. **Enter API Key** - Skip provider API keys unless you intentionally use a paid/external provider
 3. **Choose Channels** - Select "Telegram" for now (easiest to test)
 4. **Bot Token** - Create a Telegram bot via @BotFather on Telegram
 
-### Step 2.2: Get Anthropic API Key
+### Step 2.2: Configure Local Ollama
 
-1. Go to https://console.anthropic.com
-2. Sign up (free tier available)
-3. Create a new API key
-4. Copy the key (save it safely)
-5. Paste it when prompted in the wizard
+1. Set `LLM_PROVIDER=ollama` in `.env`
+2. Set `LLM_MODEL=llama3:latest`
+3. Start Ollama with `docker-compose --profile llm up -d ollama`
+4. Pull the model with `docker exec archaeologist-ollama ollama pull llama3:latest`
+5. Set `ENABLE_LLM_ANALYSIS=true` only when Ollama is running
 
 ### Step 2.3: Create Telegram Bot
 

@@ -1,5 +1,6 @@
 import json
 import secrets
+import asyncio
 from datetime import datetime
 from typing import Any
 
@@ -85,6 +86,80 @@ scar_tissue_agent = ScarTissueAnalyzerAgent()
 onboarding_agent = OnboardingPathGeneratorAgent()
 
 
+def _analysis_agents() -> dict[str, Any]:
+    return {
+        "perception": perception_agent,
+        "decisions": decision_agent,
+        "ownership": ownership_agent,
+        "ghost_code": ghost_code_agent,
+        "bus_factor": bus_factor_agent,
+        "scar_tissue": scar_tissue_agent,
+    }
+
+
+async def _run_agentic_analysis(owner: str, repo: str, branch: str | None = None, use_cache: bool = True) -> dict[str, Any]:
+    """Run the evidence-backed multi-agent workflow for a GitHub repository."""
+    if use_cache:
+        cached_result = analysis_cache.get(owner, repo)
+        if cached_result:
+            return {**cached_result, "message": "Result from cache", "source": "cache"}
+
+    analysis_input = {
+        "owner": owner,
+        "repo": repo,
+        "branch": branch,
+        "repo_path": None,
+        "analysis_scope": "full",
+    }
+
+    agents = _analysis_agents()
+    for agent in agents.values():
+        agent.memory["owner"] = owner
+        agent.memory["repo"] = repo
+        agent.memory["branch"] = branch
+        agent.memory["analysis_input"] = analysis_input
+
+    perception_result = await agents["perception"].run_cycle(analysis_input)
+    specialist_names = ["decisions", "ownership", "ghost_code", "bus_factor", "scar_tissue"]
+    specialist_results = await asyncio.gather(
+        *(agents[name].run_cycle(analysis_input) for name in specialist_names),
+        return_exceptions=True,
+    )
+
+    agent_results: dict[str, Any] = {"perception": perception_result}
+    for name, response in zip(specialist_names, specialist_results):
+        agent_results[name] = {"error": str(response)} if isinstance(response, Exception) else response
+
+    result = {
+        "status": "success",
+        "repository": f"{owner}/{repo}",
+        "analysis_mode": "agentic_evidence_workflow",
+        "workflow": [
+            "perception gathers repository metadata and evidence",
+            "specialist agents reason over shared analysis evidence",
+            "decision traces expose each agent thought and action",
+            "feedback endpoint stores human review signals for later runs",
+        ],
+        "llm": {
+            "enabled": settings.enable_llm_analysis,
+            "provider": settings.llm_provider,
+            "model": settings.llm_model if settings.llm_provider.lower() in {"ollama", "local"} else settings.anthropic_model,
+        },
+        "timestamp": datetime.now().isoformat(),
+        "agents_executed": len(agents),
+        "data_source": "git_history_and_github_api",
+        "source": "real_analysis",
+        "agent_results": agent_results,
+        "agent_summaries": {name: agent.get_summary() for name, agent in agents.items()},
+        "decision_traces": {name: agent.get_decision_trace() for name, agent in agents.items()},
+        "message": "Agentic repository analysis completed",
+    }
+
+    if use_cache:
+        analysis_cache.set(owner, repo, result)
+    return result
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
@@ -121,100 +196,9 @@ from .services.cache import analysis_cache
 
 @app.post("/api/v2/analyze-autonomous")
 async def analyze_autonomous(owner: str, repo: str, repo_path: str = None, use_cache: bool = True):
-    """Analyze with pooling and caching"""
+    """Analyze with the evidence-backed multi-agent workflow."""
     try:
-        # Check cache first
-        if use_cache:
-            cached_result = analysis_cache.get(owner, repo)
-            if cached_result:
-                return {
-                    **cached_result,
-                    "message": "Result from cache",
-                    "source": "cache"
-                }
-        
-        # Get agents from pools
-        perception_agent = await perception_pool.acquire()
-        decision_agent = await decision_pool.acquire()
-        ownership_agent = await ownership_pool.acquire()
-        ghost_code_agent = await ghost_code_pool.acquire()
-        bus_factor_agent = await bus_factor_pool.acquire()
-        scar_tissue_agent = await scar_tissue_pool.acquire()
-        
-        try:
-            # Run analysis
-            analysis_input = {
-                "owner": owner,
-                "repo": repo,
-                "repo_path": repo_path or f"/tmp/{owner}_{repo}",
-                "analysis_scope": "full"
-            }
-            
-            # Store in agent memory
-            for agent in [perception_agent, decision_agent, ownership_agent,
-                         ghost_code_agent, bus_factor_agent, scar_tissue_agent]:
-                agent.memory["owner"] = owner
-                agent.memory["repo"] = repo
-                agent.memory["repo_path"] = analysis_input["repo_path"]
-                agent.memory["analysis_input"] = analysis_input
-            
-            # Run all agents
-            perception_result = await perception_agent.run_cycle(analysis_input)
-            decision_result = await decision_agent.run_cycle(analysis_input)
-            ownership_result = await ownership_agent.run_cycle(analysis_input)
-            ghost_code_result = await ghost_code_agent.run_cycle(analysis_input)
-            bus_factor_result = await bus_factor_agent.run_cycle(analysis_input)
-            scar_tissue_result = await scar_tissue_agent.run_cycle(analysis_input)
-            
-            result = {
-                "status": "success",
-                "repository": f"{owner}/{repo}",
-                "analysis_mode": "autonomous_agents_with_pooling_and_cache",
-                "timestamp": datetime.now().isoformat(),
-                "agents_executed": 6,
-                "source": "real_analysis",
-                "agent_results": {
-                    "perception": perception_result,
-                    "decisions": decision_result,
-                    "ownership": ownership_result,
-                    "ghost_code": ghost_code_result,
-                    "bus_factor": bus_factor_result,
-                    "scar_tissue": scar_tissue_result
-                },
-                "agent_summaries": {
-                    "perception": perception_agent.get_summary(),
-                    "decisions": decision_agent.get_summary(),
-                    "ownership": ownership_agent.get_summary(),
-                    "ghost_code": ghost_code_agent.get_summary(),
-                    "bus_factor": bus_factor_agent.get_summary(),
-                    "scar_tissue": scar_tissue_agent.get_summary()
-                },
-                "decision_traces": {
-                    "perception": perception_agent.get_decision_trace(),
-                    "decisions": decision_agent.get_decision_trace(),
-                    "ownership": ownership_agent.get_decision_trace(),
-                    "ghost_code": ghost_code_agent.get_decision_trace(),
-                    "bus_factor": bus_factor_agent.get_decision_trace(),
-                    "scar_tissue": scar_tissue_agent.get_decision_trace()
-                },
-                "message": "All agents completed analysis with pooling and cache"
-            }
-            
-            # Cache result
-            if use_cache:
-                analysis_cache.set(owner, repo, result)
-            
-            return result
-        
-        finally:
-            # Always return agents to pool
-            perception_pool.release(perception_agent)
-            decision_pool.release(decision_agent)
-            ownership_pool.release(ownership_agent)
-            ghost_code_pool.release(ghost_code_agent)
-            bus_factor_pool.release(bus_factor_agent)
-            scar_tissue_pool.release(scar_tissue_agent)
-    
+        return await _run_agentic_analysis(owner, repo, branch=repo_path, use_cache=use_cache)
     except Exception as e:
         logger.error(f"Autonomous analysis failed: {str(e)}")
         return {
@@ -727,6 +711,11 @@ async def analyze_autonomous(owner: str, repo: str, repo_path: str = None):
 
     
     
+async def analyze_autonomous(owner: str, repo: str, repo_path: str = None, use_cache: bool = True):
+    """Shared callable used by report endpoints after duplicate route registration."""
+    return await _run_agentic_analysis(owner, repo, branch=repo_path, use_cache=use_cache)
+
+
 @app.get("/api/repositories")
 def repositories(db: Session = Depends(get_db)):
     rows = db.query(Repository).order_by(Repository.analyzed_at.desc()).all()
@@ -882,7 +871,11 @@ def health_detailed(db: Session = Depends(get_db)):
         "database": "ok",
         "repositories": repo_count,
         "last_successful_analysis": last.analyzed_at if last else None,
-        "llm": "configured" if settings.anthropic_api_key else "optional",
+        "llm": {
+            "enabled": settings.enable_llm_analysis,
+            "provider": settings.llm_provider,
+            "model": settings.llm_model if settings.llm_provider.lower() in {"ollama", "local"} else settings.anthropic_model,
+        },
     }
 
 

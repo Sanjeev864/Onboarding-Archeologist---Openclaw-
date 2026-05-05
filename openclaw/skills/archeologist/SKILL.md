@@ -1,3 +1,11 @@
+---
+name: Onboarding Archaeologist
+description: 7-agent autonomous forensic analysis system
+author: Sanje
+version: 1.0.0
+
+---
+
 # Onboarding Archaeologist - Autonomous Agent Skills
 
 ## Overview
@@ -5,6 +13,14 @@
 Advanced agent-based analysis system for repository evaluation and onboarding.
 
 7 specialized autonomous agents providing transparent, reasoning-based analysis.
+
+OpenClaw is the automation surface for this project. The FastAPI backend performs
+the analysis, while this skill turns those backend endpoints into chat commands
+that can be used from OpenClaw Gateway channels such as Telegram.
+
+LLM enrichment uses a free local Ollama model by default when enabled with
+`ENABLE_LLM_ANALYSIS=true` and `LLM_PROVIDER=ollama`. Anthropic/Claude is optional
+and only used when `LLM_PROVIDER=anthropic`.
 
 ---
 
@@ -301,6 +317,7 @@ A: "Agent pooling handles concurrent requests. Real data integration optional. C
 ## Next Steps
 
 - All commands accessible via OpenClaw
-- Natural language interface
+- Telegram automation through OpenClaw Gateway
+- Natural language interface backed by local/free model enrichment when enabled
 - Agent-based reasoning throughout
 - Complete transparency for judges

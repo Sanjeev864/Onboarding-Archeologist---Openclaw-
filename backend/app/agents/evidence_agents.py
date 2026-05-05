@@ -10,6 +10,27 @@ from .base import AutonomousAgent, AgentThought, AgentDecision
 from ..services.agent_services import analyzer_service, oracle_service, github_service
 
 
+_agent_analysis_cache: Dict[str, Dict[str, Any]] = {}
+
+
+async def _analysis_for(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    owner = input_data.get("owner")
+    repo = input_data.get("repo")
+    if not owner or not repo:
+        return input_data
+
+    branch = input_data.get("branch")
+    key = f"{owner}/{repo}:{branch or ''}"
+    if key not in _agent_analysis_cache:
+        _agent_analysis_cache[key] = await analyzer_service.analyze_repository(
+            owner=owner,
+            repo=repo,
+            path=branch,
+            deep=input_data.get("analysis_scope", "full") == "full",
+        )
+    return _agent_analysis_cache[key]
+
+
 class RepositoryPerceptionAgent(AutonomousAgent):
     """
     Initial perception agent - understands repository structure and context.
@@ -35,10 +56,15 @@ class RepositoryPerceptionAgent(AutonomousAgent):
             "analysis_scope": "full"
         }
         """
+        repository_info = await github_service.get_repository_info(
+            input_data.get("owner", "unknown"),
+            input_data.get("repo", "unknown"),
+        )
         return {
             "owner": input_data.get("owner", "unknown"),
             "repo_name": input_data.get("repo", "unknown"),
             "repo_path": input_data.get("repo_path"),
+            "repository_info": repository_info,
             "analysis_scope": input_data.get("analysis_scope", "full"),
             "timestamp": datetime.now().isoformat()
         }
@@ -52,7 +78,7 @@ class RepositoryPerceptionAgent(AutonomousAgent):
         scope = perception["analysis_scope"]
         
         reasoning = f"Repository {owner}/{repo} ready for {scope} analysis"
-        confidence = 0.95 if perception["repo_path"] else 0.7
+        confidence = 0.95 if perception["owner"] != "unknown" and perception["repo_name"] != "unknown" else 0.7
         
         return AgentThought(
             step=self.step_count,
@@ -82,54 +108,21 @@ class RepositoryPerceptionAgent(AutonomousAgent):
         """
         Initialize analysis workflow.
         """
+        analysis = await _analysis_for(self.memory.get("analysis_input", {}))
+        self.memory["analysis_results"] = analysis
         self.memory["analysis_initiated"] = {
             "strategy": decision.parameters["strategy"],
+            "decisions": len(analysis.get("decisions", [])),
+            "ownership_paths": len(analysis.get("ownership", [])),
             "timestamp": datetime.now().isoformat()
         }
         
         return {
             "status": "ready",
             "strategy": decision.parameters["strategy"],
+            "analysis": analysis,
             "success": True
         }
-async def execute(self, decision: AgentDecision) -> Dict[str, Any]:
-    """Execute using real GitHub and analyzer data"""
-    try:
-        # Get real repository info from GitHub
-        repo_info = await github_service.get_repository_info(
-            self.memory.get("owner", "unknown"),
-            self.memory.get("repo", "unknown")
-        )
-        
-        # Get real analysis
-        analysis = await analyzer_service.analyze_repository(
-            owner=self.memory.get("owner"),
-            repo=self.memory.get("repo"),
-            path=self.memory.get("repo_path"),
-            deep=decision.parameters.get("depth") == "comprehensive"
-        )
-        
-        self.memory["repository_info"] = repo_info
-        self.memory["analysis_results"] = analysis
-        
-        return {
-            "status": "ready",
-            "strategy": decision.parameters["strategy"],
-            "repository_info": repo_info,
-            "analysis_ready": bool(analysis),
-            "success": True
-        }
-    except Exception as e:
-        logger.error(f"Real data fetch failed: {str(e)}")
-        return {
-            "status": "error",
-            "error": str(e),
-            "fallback_to_mock": True,
-            "success": False
-        }
-
-
-
 class ArchitecturalDecisionAgent(AutonomousAgent):
     """
     Identifies and evaluates architectural decisions from git history.
@@ -154,7 +147,9 @@ class ArchitecturalDecisionAgent(AutonomousAgent):
         """
         Extract decision signals from analysis results.
         """
-        decisions = input_data.get("decisions", [])
+        analysis = await _analysis_for(input_data)
+        self.memory["analysis_results"] = analysis
+        decisions = analysis.get("decisions", input_data.get("decisions", []))
         
         return {
             "raw_decisions": decisions,
@@ -215,39 +210,16 @@ class ArchitecturalDecisionAgent(AutonomousAgent):
         """
         self.memory["decisions_extracted"] = {
             "threshold": decision.parameters["min_confidence_threshold"],
+            "decisions_found": len(self.memory.get("analysis_results", {}).get("decisions", [])),
             "timestamp": datetime.now().isoformat()
         }
         
         return {
             "extraction_complete": True,
             "threshold": decision.parameters["min_confidence_threshold"],
+            "decisions_found": len(self.memory.get("analysis_results", {}).get("decisions", [])),
             "success": True
         }
-async def execute(self, decision: AgentDecision) -> Dict[str, Any]:
-    """Execute decision extraction with real analyzer"""
-    try:
-        analysis = self.memory.get("analysis_results", {})
-        
-        # Extract decisions using real analyzer
-        decisions = await analyzer_service.extract_decisions(analysis)
-        
-        self.memory["decisions_extracted"] = {
-            "count": len(decisions),
-            "threshold": decision.parameters["min_confidence_threshold"],
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        return {
-            "extraction_complete": True,
-            "decisions_found": len(decisions),
-            "threshold": decision.parameters["min_confidence_threshold"],
-            "success": True
-        }
-    except Exception as e:
-        logger.error(f"Decision extraction failed: {str(e)}")
-        return {"extraction_complete": False, "success": False, "error": str(e)}
-
-
 class OwnershipAnalysisAgent(AutonomousAgent):
     """
     Analyzes code ownership patterns and concentration risks.
@@ -265,7 +237,9 @@ class OwnershipAnalysisAgent(AutonomousAgent):
         """
         Extract ownership signals.
         """
-        ownership = input_data.get("ownership", [])
+        analysis = await _analysis_for(input_data)
+        self.memory["analysis_results"] = analysis
+        ownership = analysis.get("ownership", input_data.get("ownership", []))
         
         high_risk = [o for o in ownership if o.get("risk") == "high"]
         medium_risk = [o for o in ownership if o.get("risk") == "medium"]
@@ -332,12 +306,14 @@ class OwnershipAnalysisAgent(AutonomousAgent):
         """
         self.memory["ownership_analyzed"] = {
             "severity_threshold": decision.parameters["severity_threshold"],
+            "paths_analyzed": len(self.memory.get("analysis_results", {}).get("ownership", [])),
             "timestamp": datetime.now().isoformat()
         }
         
         return {
             "analysis_complete": True,
             "severity_threshold": decision.parameters["severity_threshold"],
+            "paths_analyzed": len(self.memory.get("analysis_results", {}).get("ownership", [])),
             "success": True
         }
 
@@ -359,7 +335,9 @@ class GhostCodeDetectorAgent(AutonomousAgent):
         """
         Extract ghost code signals.
         """
-        ghost_code = input_data.get("ghost_code", [])
+        analysis = await _analysis_for(input_data)
+        self.memory["analysis_results"] = analysis
+        ghost_code = analysis.get("ghost_code", input_data.get("ghost_code", []))
         
         high_confidence = [
             g for g in ghost_code
@@ -428,37 +406,16 @@ class GhostCodeDetectorAgent(AutonomousAgent):
         self.memory["ghost_code_detected"] = {
             "threshold": decision.parameters["confidence_threshold"],
             "requires_review": decision.parameters["require_human_review"],
+            "candidates_found": len(self.memory.get("analysis_results", {}).get("ghost_code", [])),
             "timestamp": datetime.now().isoformat()
         }
         
         return {
             "detection_complete": True,
             "safety_first_mode": decision.parameters["safety_first"],
+            "candidates_found": len(self.memory.get("analysis_results", {}).get("ghost_code", [])),
             "success": True
         }
-async def execute(self, decision: AgentDecision) -> Dict[str, Any]:
-    """Execute ghost code detection with real analyzer"""
-    try:
-        analysis = self.memory.get("analysis_results", {})
-        
-        # Detect ghost code using real analyzer
-        ghost_code = await analyzer_service.detect_ghost_code(analysis)
-        
-        self.memory["ghost_code_detected"] = {
-            "candidates_found": len(ghost_code),
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        return {
-            "detection_complete": True,
-            "candidates_found": len(ghost_code),
-            "success": True
-        }
-    except Exception as e:
-        return {"detection_complete": False, "success": False, "error": str(e)}
-
-
-
 class BusFactorEvaluatorAgent(AutonomousAgent):
     """
     Evaluates bus factor (single points of failure).
@@ -476,10 +433,12 @@ class BusFactorEvaluatorAgent(AutonomousAgent):
         """
         Extract bus factor signals.
         """
-        alerts = input_data.get("bus_factor_alerts", [])
+        analysis = await _analysis_for(input_data)
+        self.memory["analysis_results"] = analysis
+        alerts = analysis.get("bus_factor_alerts", input_data.get("bus_factor_alerts", []))
         
-        critical = [a for a in alerts if a.get("risk_level") == "CRITICAL"]
-        high = [a for a in alerts if a.get("risk_level") == "HIGH"]
+        critical = [a for a in alerts if str(a.get("risk_level", "")).lower() == "critical"]
+        high = [a for a in alerts if str(a.get("risk_level", "")).lower() == "high"]
         
         avg_concentration = (
             sum(a.get("concentration_percentage", 0) for a in alerts) / len(alerts)
@@ -551,38 +510,16 @@ class BusFactorEvaluatorAgent(AutonomousAgent):
         self.memory["bus_factor_evaluated"] = {
             "escalation_needed": decision.parameters["escalation_needed"],
             "timeline": "URGENT" if decision.parameters["timeline_urgent"] else "30-90 days",
+            "alerts_found": len(self.memory.get("analysis_results", {}).get("bus_factor_alerts", [])),
             "timestamp": datetime.now().isoformat()
         }
         
         return {
             "evaluation_complete": True,
             "escalation_needed": decision.parameters["escalation_needed"],
+            "alerts_found": len(self.memory.get("analysis_results", {}).get("bus_factor_alerts", [])),
             "success": True
         }
-async def execute(self, decision: AgentDecision) -> Dict[str, Any]:
-    """Execute bus factor evaluation with real analyzer"""
-    try:
-        ownership = self.memory.get("ownership_analyzed", {})
-        
-        # Evaluate bus factor using real analyzer
-        alerts = await analyzer_service.evaluate_bus_factor(
-            self.memory.get("analysis_results", {})
-        )
-        
-        self.memory["bus_factor_evaluated"] = {
-            "alerts_found": len(alerts),
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        return {
-            "evaluation_complete": True,
-            "alerts_found": len(alerts),
-            "success": True
-        }
-    except Exception as e:
-        return {"evaluation_complete": False, "success": False, "error": str(e)}
-
-
 class ScarTissueAnalyzerAgent(AutonomousAgent):
     """
     Detects scar tissue patterns (code marked by incidents/struggles).
@@ -600,7 +537,9 @@ class ScarTissueAnalyzerAgent(AutonomousAgent):
         """
         Extract scar tissue signals.
         """
-        scars = input_data.get("scar_tissue", [])
+        analysis = await _analysis_for(input_data)
+        self.memory["analysis_results"] = analysis
+        scars = analysis.get("scar_tissue", input_data.get("scar_tissue", []))
         
         critical = [s for s in scars if s.get("severity") == "critical"]
         high = [s for s in scars if s.get("severity") == "high"]
@@ -663,12 +602,14 @@ class ScarTissueAnalyzerAgent(AutonomousAgent):
         """
         self.memory["scar_tissue_analyzed"] = {
             "testing_priority": decision.parameters["testing_priority"],
+            "patterns_found": len(self.memory.get("analysis_results", {}).get("scar_tissue", [])),
             "timestamp": datetime.now().isoformat()
         }
         
         return {
             "analysis_complete": True,
             "testing_priority": decision.parameters["testing_priority"],
+            "patterns_found": len(self.memory.get("analysis_results", {}).get("scar_tissue", [])),
             "success": True
         }
 

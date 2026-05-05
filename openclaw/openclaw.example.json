@@ -1,0 +1,22 @@
+{
+  "skills": {
+    "entries": {
+      "archaeologist": {
+        "enabled": true,
+        "path": "~/.openclaw/skills/archaeologist",
+        "env": {
+          "ARCHAEOLOGIST_API_URL": "http://localhost:8000"
+        }
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "botTokenEnv": "8551308373:AAGmlRage8ymrU_VozJfoL_CPD_KRriegK0",
+      "skills": [
+        "archaeologist"
+      ]
+    }
+  }
+}

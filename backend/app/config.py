@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     log_format: str = "json"
     github_token: str = ""
     anthropic_api_key: str = ""
+    llm_provider: str = "ollama"
+    anthropic_model: str = "claude-3-haiku-20240307"
     database_url: str = "sqlite:///./data/archaeologist.db"
     ollama_api_url: str = "http://ollama:11434"
     llm_model: str = "llama3:latest"

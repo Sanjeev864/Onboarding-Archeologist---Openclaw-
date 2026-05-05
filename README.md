@@ -15,10 +15,12 @@ Open:
 - Frontend: http://localhost:3000
 - API docs: http://localhost:8000/docs
 
-Ollama is optional in this MVP and is behind the `llm` Compose profile because the image is large:
+LLM enrichment uses a free local Ollama model by default when enabled. Ollama is
+behind the `llm` Compose profile because the image is large:
 
 ```bash
 docker-compose --profile llm up -d ollama
+docker exec archaeologist-ollama ollama pull llama3:latest
 ```
 
 ## What Works
@@ -36,15 +38,21 @@ Copy `.env.example` to `.env` and adjust values:
 
 ```bash
 GITHUB_TOKEN=your_github_token_here
+ENABLE_LLM_ANALYSIS=false
+LLM_PROVIDER=ollama
+LLM_MODEL=llama3:latest
 DATABASE_URL=sqlite:///./data/archaeologist.db
 VITE_API_URL=http://localhost:8000
 ```
 
 Public repositories can be analyzed without a token. Private repositories require a token with repository read access.
+Claude/Anthropic is optional and only used when `LLM_PROVIDER=anthropic`.
 
 ## OpenClaw Integration
 
 The repository includes a local OpenClaw skill in `openclaw/skills/archaeologist`.
+OpenClaw is the automation layer; Telegram support comes from running OpenClaw
+Gateway with a Telegram bot token and this skill enabled.
 
 Install it with:
 

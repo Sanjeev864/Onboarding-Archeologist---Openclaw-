@@ -58,7 +58,8 @@ class AgentPool:
 
 
 # Create pools for each agent type
-from .agents.evidence_agents import (
+# CORRECT - This fixes it
+from ..agents.evidence_agents import (
     RepositoryPerceptionAgent,
     ArchitecturalDecisionAgent,
     OwnershipAnalysisAgent,
