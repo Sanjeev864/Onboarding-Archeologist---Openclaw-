@@ -8,12 +8,12 @@ openclaw/skills/archaeologist
 
 The skill connects OpenClaw to the local Onboarding Archaeologist API and exposes:
 
-- `/analyze <owner>/<repo>`
+- `/analyze-autonomous <owner>/<repo>`
+- `/agent-trace <agent_name>`
+- `/onboarding <junior|mid|senior> [hours]`
+- `/agent-feedback <agent_id> <rating> <comment>`
+- `/agent-status`
 - `/ask <question>`
-- `/bus-factor`
-- `/decisions`
-- `/ghost-code`
-- `/onboarding <junior|mid|senior>`
 
 ## What OpenClaw Means In This Project
 
@@ -31,11 +31,11 @@ In other words:
 
 ## What Was Implemented
 
-- OpenClaw-ready `SKILL.md`
+- OpenClaw-ready `skill.yaml`, `system_prompt.md`, `handlers.py`, and `SKILL.md`
 - PowerShell and bash helper scripts
 - OpenClaw API formatter endpoints under `/api/openclaw/*`
 - Local install scripts
-- Skill API reference
+- Gateway config in `openclaw/openclaw.config.yaml`
 
 ## Install The Skill
 
@@ -82,7 +82,7 @@ openclaw gateway
 Then send a command to your OpenClaw channel:
 
 ```text
-/analyze anthropics/claude-code
+/analyze-autonomous anthropics/claude-code
 ```
 
 ## Telegram Automation
@@ -101,6 +101,7 @@ Recommended BotFather command list:
 
 ```text
 analyze - Analyze a GitHub repository
+analyze_autonomous - Run autonomous multi-agent analysis
 ask - Ask a question about the latest analyzed repository
 bus_factor - Show bus factor risks
 decisions - Show architectural decisions
@@ -119,14 +120,16 @@ Invoke-RestMethod -Uri http://localhost:8000/api/openclaw/analyze `
   -Body '{"owner":"octocat","repo":"Hello-World","branch":""}'
 ```
 
-## Windows Script Wrappers
+Autonomous-agent endpoint smoke test:
 
-Windows may block direct `.ps1` execution. Use the `.cmd` wrappers from the
-skill scripts directory instead:
-
-```cmd
-openclaw\skills\archaeologist\scripts\oracle.cmd 3 "What security decisions are important?"
+```bash
+curl -X POST "http://localhost:8000/api/v2/analyze-autonomous?owner=octocat&repo=Hello-World"
+curl http://localhost:8000/api/v2/agent-status
 ```
+
+The OpenClaw handlers call the `/api/v2/*` autonomous endpoints for agent
+analysis, traces, onboarding, feedback, and status. They use `/api/openclaw/*`
+where the backend already provides Telegram-ready formatted text.
 
 ## Notes
 

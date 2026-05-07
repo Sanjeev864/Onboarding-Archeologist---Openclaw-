@@ -60,6 +60,12 @@ Install it with:
 .\scripts\install-openclaw-skill.ps1
 ```
 
+or:
+
+```bash
+./scripts/install-openclaw-skill.sh
+```
+
 See `docs/OPENCLAW_INTEGRATION.md` for setup, commands, and API smoke tests.
 
 ## Development
