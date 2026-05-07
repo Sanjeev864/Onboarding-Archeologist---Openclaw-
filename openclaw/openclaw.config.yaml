@@ -1,0 +1,55 @@
+schema_version: "1.0"
+gateway:
+  name: onboarding-archaeologist-gateway
+  mode: polling
+  log_level: info
+
+environment:
+  ARCHAEOLOGIST_API_URL: ${ARCHAEOLOGIST_API_URL:-http://localhost:8000}
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+
+skills:
+  archaeologist:
+    enabled: true
+    path: ~/.openclaw/skills/archaeologist
+    manifest: skill.yaml
+    env:
+      ARCHAEOLOGIST_API_URL: ${ARCHAEOLOGIST_API_URL:-http://localhost:8000}
+
+channels:
+  telegram:
+    enabled: true
+    mode: polling
+    botTokenEnv: TELEGRAM_BOT_TOKEN
+    skills:
+      - archaeologist
+    allowedCommands:
+      - analyze-autonomous
+      - agent-trace
+      - onboarding
+      - agent-feedback
+      - agent-status
+      - ask
+    rateLimits:
+      default:
+        requests: 20
+        windowSeconds: 60
+      analyze-autonomous:
+        requests: 3
+        windowSeconds: 600
+      onboarding:
+        requests: 10
+        windowSeconds: 300
+      agent-feedback:
+        requests: 30
+        windowSeconds: 300
+    polling:
+      allowedUpdates:
+        - message
+        - callback_query
+      timeoutSeconds: 30
+      dropPendingUpdates: false
+    webhook:
+      enabled: false
+      url: ${OPENCLAW_TELEGRAM_WEBHOOK_URL:-}
+      secretTokenEnv: OPENCLAW_TELEGRAM_WEBHOOK_SECRET

@@ -1,0 +1,269 @@
+schema_version: "1.0"
+name: archaeologist
+display_name: Onboarding Archaeologist
+version: "1.0.0"
+description: OpenClaw skill for autonomous repository archaeology, onboarding, oracle Q&A, and agent feedback.
+author: Onboarding Archaeologist Team
+license: MIT
+
+runtime:
+  type: python
+  entrypoint: handlers.py
+  minimum_python: "3.10"
+  dependencies:
+    - httpx>=0.25.0
+
+environment:
+  ARCHAEOLOGIST_API_URL:
+    description: Base URL for the FastAPI backend.
+    default: http://localhost:8000
+    required: false
+  TELEGRAM_BOT_TOKEN:
+    description: Telegram bot token used by OpenClaw Gateway.
+    required: true
+
+llm:
+  system_prompt: system_prompt.md
+
+tools:
+  - name: analyze_repository
+    description: Run all autonomous repository analysis agents.
+    timeout_seconds: 180
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [owner, repo]
+      properties:
+        owner:
+          type: string
+          description: GitHub repository owner or organization.
+        repo:
+          type: string
+          description: GitHub repository name.
+        repo_path:
+          type: string
+          description: Optional local path or backend branch hint.
+        use_cache:
+          type: boolean
+          default: true
+          description: Allow cached backend results when available.
+    output_schema:
+      type: object
+      properties:
+        status:
+          type: string
+        repository:
+          type: string
+        agent_results:
+          type: object
+        agent_summaries:
+          type: object
+        decision_traces:
+          type: object
+        message:
+          type: string
+    endpoint:
+      method: POST
+      url: "${ARCHAEOLOGIST_API_URL}/api/v2/analyze-autonomous"
+      query:
+        owner: "{{owner}}"
+        repo: "{{repo}}"
+        repo_path: "{{repo_path}}"
+        use_cache: "{{use_cache}}"
+
+  - name: get_agent_trace
+    description: Fetch decision and execution traces for a specific autonomous agent.
+    timeout_seconds: 30
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [agent_name]
+      properties:
+        agent_name:
+          type: string
+          enum: [perception, decisions, ownership, ghost_code, bus_factor, scar_tissue, onboarding]
+          description: Agent to inspect.
+    output_schema:
+      type: object
+      properties:
+        agent_id:
+          type: string
+        agent_name:
+          type: string
+        decision_trace:
+          type: array
+          items:
+            type: object
+        execution_trace:
+          type: array
+          items:
+            type: object
+        memory_snapshot:
+          type: object
+        summary:
+          type: object
+    endpoint:
+      method: GET
+      url: "${ARCHAEOLOGIST_API_URL}/api/v2/agent-decision-trace/{{agent_name}}"
+
+  - name: get_onboarding_path
+    description: Generate a personalized onboarding path.
+    timeout_seconds: 120
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [repo_id, level]
+      properties:
+        repo_id:
+          type: integer
+          description: Backend repository id.
+        level:
+          type: string
+          enum: [junior, mid, senior]
+          description: Learner experience level.
+        hours:
+          type: integer
+          minimum: 1
+          maximum: 240
+          default: 40
+          description: Requested time budget. Backend currently defaults to 40 hours.
+    output_schema:
+      type: object
+      properties:
+        status:
+          type: string
+        repository_id:
+          type: integer
+        learner_level:
+          type: string
+        agent_summary:
+          type: object
+        path_generated:
+          type: object
+        agent_trace:
+          type: array
+          items:
+            type: object
+    endpoint:
+      method: POST
+      url: "${ARCHAEOLOGIST_API_URL}/api/v2/onboarding-autonomous"
+      query:
+        repo_id: "{{repo_id}}"
+        level: "{{level}}"
+
+  - name: submit_feedback
+    description: Submit human feedback that helps agents adapt.
+    timeout_seconds: 30
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [agent_id, feedback_type, rating, feedback_text]
+      properties:
+        agent_id:
+          type: string
+          enum: [perception, decisions, ownership, ghost_code, bus_factor, scar_tissue, onboarding]
+          description: Agent receiving feedback.
+        feedback_type:
+          type: string
+          enum: [positive, negative, partial]
+          description: Feedback category.
+        rating:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Rating from 0.0 to 1.0.
+        feedback_text:
+          type: string
+          description: User feedback comment.
+        execution_id:
+          type: string
+          description: Optional execution id.
+    output_schema:
+      type: object
+      properties:
+        status:
+          type: string
+        feedback_recorded:
+          type: boolean
+        agent_adapted:
+          type: boolean
+        agent_id:
+          type: string
+    endpoint:
+      method: POST
+      url: "${ARCHAEOLOGIST_API_URL}/api/v2/submit-agent-feedback"
+      query:
+        agent_id: "{{agent_id}}"
+        execution_id: "{{execution_id}}"
+        feedback_type: "{{feedback_type}}"
+        feedback_text: "{{feedback_text}}"
+        rating: "{{rating}}"
+
+  - name: get_agent_status
+    description: Return operational status for all seven agents.
+    timeout_seconds: 30
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties: {}
+    output_schema:
+      type: object
+      properties:
+        status:
+          type: string
+        agents:
+          type: object
+        timestamp:
+          type: string
+    endpoint:
+      method: GET
+      url: "${ARCHAEOLOGIST_API_URL}/api/v2/agent-status"
+
+  - name: ask_oracle
+    description: Ask a natural-language question about a previously analyzed repository.
+    timeout_seconds: 60
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [repository_id, question]
+      properties:
+        repository_id:
+          type: integer
+          description: Backend repository id.
+        question:
+          type: string
+          description: Question about the repository.
+    output_schema:
+      type: object
+      properties:
+        text:
+          type: string
+    endpoint:
+      method: POST
+      url: "${ARCHAEOLOGIST_API_URL}/api/openclaw/ask"
+      body:
+        repository_id: "{{repository_id}}"
+        question: "{{question}}"
+
+commands:
+  telegram:
+    - command: analyze-autonomous
+      usage: /analyze-autonomous owner/repo
+      handler: handle_analyze_autonomous
+      tool: analyze_repository
+    - command: agent-trace
+      usage: /agent-trace agent_name
+      handler: handle_agent_trace
+      tool: get_agent_trace
+    - command: onboarding
+      usage: /onboarding junior|mid|senior [hours]
+      handler: handle_onboarding
+      tool: get_onboarding_path
+    - command: agent-feedback
+      usage: /agent-feedback agent_id rating comment
+      handler: handle_agent_feedback
+      tool: submit_feedback
+    - command: agent-status
+      usage: /agent-status
+      handler: handle_agent_status
+      tool: get_agent_status
