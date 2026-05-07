@@ -90,4 +90,4 @@ flowchart LR
   Oracle --> UI
 ```
 
-The MVP intentionally uses deterministic git-history heuristics first. Ollama configuration is present for the next step: summarizing and ranking evidence with a local LLM.
+The MVP intentionally uses deterministic git-history heuristics first. Ollama configuration is present for the next step: summarizing and ranking evidence with a local LLM
