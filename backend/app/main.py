@@ -56,7 +56,7 @@ install_request_logging(app, logger)
 
 # Telegram Bot Integration
 from telegram.ext import Application
-from app.telegram_bot import setup_telegram_bot
+from .telegram_bot import setup_telegram_bot
 from .telegram_integration import setup_telegram_webhook
 
 # Initialize Telegram Bot
