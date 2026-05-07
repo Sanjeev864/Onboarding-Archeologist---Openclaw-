@@ -7,3 +7,4 @@ GitPython
 SQLAlchemy
 python-dotenv
 PyGithub
+python-telegram-bot==20.4

@@ -38,6 +38,8 @@ from .services.openclaw_formatter import (
 )
 from .services.oracle import Oracle
 from .services.report_formatter import ReportFormatter, HTMLReportFormatter
+from dotenv import load_dotenv
+load_dotenv()
 
 Base.metadata.create_all(bind=engine)
 ensure_sqlite_schema()
@@ -51,6 +53,20 @@ app = FastAPI(
 )
 install_error_handlers(app)
 install_request_logging(app, logger)
+
+# Telegram Bot Integration
+from telegram.ext import Application
+from app.telegram_bot import setup_telegram_bot
+from .telegram_integration import setup_telegram_webhook
+
+# Initialize Telegram Bot
+try:
+    bot_application = setup_telegram_bot()
+    setup_telegram_webhook(app, bot_application)
+    logger.info("✅ Telegram bot initialized successfully")
+except ValueError as e:
+    logger.warning(f"⚠️  Telegram bot not configured: {e}")
+    bot_application = None
 
 app.add_middleware(
     CORSMiddleware,

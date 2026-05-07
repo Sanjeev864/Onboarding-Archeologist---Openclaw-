@@ -12,3 +12,4 @@ data/*.db
 data/chroma/
 .DS_Store
 desktop.ini
+.openclaw/
