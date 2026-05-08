@@ -72,7 +72,7 @@ The system consists of 7 specialized autonomous agents:
 
 <div align="center">
 
-![Architecture Diagram](./assets/architecture.png)
+![Architecture Diagram](assets/architecture.png)
 
 </div>
 
