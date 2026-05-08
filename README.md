@@ -70,9 +70,11 @@ The system consists of 7 specialized autonomous agents:
 
 # 🏗️ Architecture
 
-<p align="center">
-  <img src="assets/architecture.png" alt="Architecture Diagram" width="100%">
-</p>
+<div align="center">
+
+![Architecture Diagram](./assets/architecture.png)
+
+</div>
 
 ### Architecture Flow
 
@@ -88,7 +90,7 @@ Evidence Oracle
 React Dashboard + OpenClaw Interface
 ```
 
-The MVP intentionally uses deterministic git-history heuristics first.
+The MVP intentionally uses deterministic git-history heuristics first.  
 The next evolution introduces local LLM-based evidence summarization and ranking for deeper architectural intelligence.
 
 ---
