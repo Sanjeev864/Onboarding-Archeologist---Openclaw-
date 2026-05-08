@@ -1,96 +1,80 @@
+# Install Onboarding Archaeologist OpenClaw skill on Windows
+# Usage: .\scripts\install-openclaw-skill.ps1 [-ApiUrl http://localhost:8000]
+
 param(
-    [string]$OpenClawHome = "$env:USERPROFILE\.openclaw",
-    [string]$ApiUrl = $(if ($env:ARCHAEOLOGIST_API_URL) { $env:ARCHAEOLOGIST_API_URL } else { "http://localhost:8000" }),
-    [switch]$SkipBackendCheck
+    [string]$ApiUrl = "http://localhost:8000"
 )
 
 $ErrorActionPreference = "Stop"
 
-function Fail([string]$Message) {
-    Write-Host "OpenClaw skill install failed: $Message" -ForegroundColor Red
+$SkillDir = Join-Path $env:USERPROFILE ".openclaw\skills\archaeologist"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptDir
+$SourceDir = Join-Path $ProjectRoot "openclaw\skills\archaeologist"
+
+Write-Host "Installing Onboarding Archaeologist OpenClaw Skill" -ForegroundColor Yellow
+Write-Host "Skill directory: $SkillDir"
+Write-Host "Backend API:     $ApiUrl"
+Write-Host ""
+
+# 1. Create skill directory
+Write-Host "[1/5] Creating skill directory..." -ForegroundColor Green
+New-Item -ItemType Directory -Force -Path $SkillDir | Out-Null
+Write-Host "  OK  Directory ready: $SkillDir"
+
+# 2. Copy skill files
+Write-Host "[2/5] Copying skill files..." -ForegroundColor Green
+if (-not (Test-Path $SourceDir)) {
+    Write-Host "  FAIL  Source not found: $SourceDir" -ForegroundColor Red
     exit 1
 }
-
-$Source = Join-Path (Split-Path -Parent $PSScriptRoot) "openclaw\skills\archaeologist"
-$ConfigSource = Join-Path (Split-Path -Parent $PSScriptRoot) "openclaw\openclaw.config.yaml"
-$Destination = Join-Path $OpenClawHome "skills\archaeologist"
-$ConfigDestination = Join-Path $OpenClawHome "openclaw.config.yaml"
-$JsonConfigDestination = Join-Path $OpenClawHome "openclaw.json"
-$EnvFile = Join-Path $OpenClawHome "archaeologist.env.ps1"
-
-if (!(Test-Path $Source)) {
-    Fail "Skill source not found: $Source"
-}
-
-if (!(Test-Path $ConfigSource)) {
-    Fail "Gateway config not found: $ConfigSource"
-}
-
-if (!$env:TELEGRAM_BOT_TOKEN) {
-    Fail "TELEGRAM_BOT_TOKEN is not set. Set it before installing so OpenClaw can start the Telegram channel."
-}
-
-$env:ARCHAEOLOGIST_API_URL = $ApiUrl
-[Environment]::SetEnvironmentVariable("ARCHAEOLOGIST_API_URL", $ApiUrl, "User")
-
-if (!$SkipBackendCheck) {
-    try {
-        $HealthUrl = "$($ApiUrl.TrimEnd('/'))/health"
-        Invoke-RestMethod -Uri $HealthUrl -Method Get -TimeoutSec 10 | Out-Null
-        Write-Host "Backend reachable at $HealthUrl" -ForegroundColor Green
+foreach ($file in @("skill.yaml", "handlers.py", "system_prompt.md")) {
+    $src = Join-Path $SourceDir $file
+    if (-not (Test-Path $src)) {
+        Write-Host "  FAIL  Missing: $src" -ForegroundColor Red
+        exit 1
     }
-    catch {
-        Fail "Backend is not reachable at $ApiUrl. Start FastAPI first, or rerun with -SkipBackendCheck."
-    }
+    Copy-Item -Path $src -Destination $SkillDir -Force
+}
+Write-Host "  OK  skill.yaml, handlers.py, system_prompt.md copied"
+
+# 3. Verify backend
+Write-Host "[3/5] Verifying backend connectivity..." -ForegroundColor Green
+try {
+    $response = Invoke-WebRequest -Uri "$ApiUrl/health" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+    Write-Host "  OK  Backend reachable at $ApiUrl"
+} catch {
+    Write-Host "  WARN  Backend not responding at $ApiUrl (it may start later)" -ForegroundColor Yellow
+    Write-Host "        Start FastAPI before running OpenClaw:"
+    Write-Host "        uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
 }
 
-New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
-if (Test-Path $Destination) {
-    Remove-Item -Path $Destination -Recurse -Force
-}
-Copy-Item -Path $Source -Destination $Destination -Recurse -Force
-Copy-Item -Path $ConfigSource -Destination $ConfigDestination -Force
-
-$OpenClawConfig = [ordered]@{
-    skills = [ordered]@{
-        entries = [ordered]@{
-            archaeologist = [ordered]@{
-                enabled = $true
-                path = "~/.openclaw/skills/archaeologist"
-                env = [ordered]@{ ARCHAEOLOGIST_API_URL = $ApiUrl }
-            }
-        }
-    }
-    channels = [ordered]@{
-        telegram = [ordered]@{
-            enabled = $true
-            mode = "polling"
-            botTokenEnv = "TELEGRAM_BOT_TOKEN"
-            skills = @("archaeologist")
-            allowedCommands = @("analyze-autonomous", "agent-trace", "onboarding", "agent-feedback", "agent-status", "ask")
-            rateLimits = [ordered]@{
-                default = [ordered]@{ requests = 20; windowSeconds = 60 }
-                "analyze-autonomous" = [ordered]@{ requests = 3; windowSeconds = 600 }
-                onboarding = [ordered]@{ requests = 10; windowSeconds = 300 }
-                "agent-feedback" = [ordered]@{ requests = 30; windowSeconds = 300 }
-            }
-        }
-    }
+# 4. Write .env for skill
+Write-Host "[4/5] Setting up environment..." -ForegroundColor Green
+$EnvFile = Join-Path $SkillDir ".env"
+if (-not (Test-Path $EnvFile)) {
+    "ARCHAEOLOGIST_API_URL=$ApiUrl" | Set-Content -Path $EnvFile
+    Write-Host "  OK  Created $EnvFile"
+} else {
+    Write-Host "  SKIP  $EnvFile already exists"
 }
 
-$OpenClawConfig | ConvertTo-Json -Depth 10 | Set-Content -Path $JsonConfigDestination -Encoding UTF8
-@"
-`$env:ARCHAEOLOGIST_API_URL = "$ApiUrl"
-if (-not `$env:TELEGRAM_BOT_TOKEN) {
-    throw "Set TELEGRAM_BOT_TOKEN before starting OpenClaw Gateway."
-}
-"@ | Set-Content -Path $EnvFile -Encoding UTF8
-
-Write-Host "Installed Onboarding Archaeologist skill to: $Destination"
-Write-Host "Registered skill config at: $JsonConfigDestination"
-Write-Host "Copied gateway YAML to: $ConfigDestination"
-Write-Host "Environment helper written to: $EnvFile"
+# 5. Done
+Write-Host "[5/5] Installation complete!" -ForegroundColor Green
 Write-Host ""
-Write-Host "Next:"
-Write-Host "1. Restart OpenClaw Gateway: openclaw gateway"
-Write-Host "2. In a new PowerShell session, run: . `"$EnvFile`""
+Write-Host "Onboarding Archaeologist skill installed successfully" -ForegroundColor Green
+Write-Host ""
+Write-Host "Next steps:"
+Write-Host "  1. Set your Telegram bot token:"
+Write-Host "     `$env:TELEGRAM_BOT_TOKEN = 'your_bot_token_here'" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  2. Start the FastAPI backend (new terminal):"
+Write-Host "     uvicorn backend.app.main:app --host 0.0.0.0 --port 8000" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  3. Start OpenClaw Gateway:"
+Write-Host "     openclaw run --config openclaw.config.yaml" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  4. Send your Telegram bot:"
+Write-Host "     /analyze-autonomous torvalds/linux" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "For full setup details see docs/OPENCLAW_INTEGRATION.md"
