@@ -28,7 +28,7 @@ if (-not (Test-Path $SourceDir)) {
     Write-Host "  FAIL  Source not found: $SourceDir" -ForegroundColor Red
     exit 1
 }
-foreach ($file in @("skill.yaml", "handlers.py", "system_prompt.md")) {
+foreach ($file in @("SKILL.md", "skill.yaml", "handlers.py", "system_prompt.md")) {
     $src = Join-Path $SourceDir $file
     if (-not (Test-Path $src)) {
         Write-Host "  FAIL  Missing: $src" -ForegroundColor Red
@@ -36,7 +36,7 @@ foreach ($file in @("skill.yaml", "handlers.py", "system_prompt.md")) {
     }
     Copy-Item -Path $src -Destination $SkillDir -Force
 }
-Write-Host "  OK  skill.yaml, handlers.py, system_prompt.md copied"
+Write-Host "  OK  SKILL.md, skill.yaml, handlers.py, system_prompt.md copied"
 
 # 3. Verify backend
 Write-Host "[3/5] Verifying backend connectivity..." -ForegroundColor Green
@@ -72,7 +72,7 @@ Write-Host "  2. Start the FastAPI backend (new terminal):"
 Write-Host "     uvicorn backend.app.main:app --host 0.0.0.0 --port 8000" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  3. Start OpenClaw Gateway:"
-Write-Host "     openclaw run --config openclaw.config.yaml" -ForegroundColor Yellow
+Write-Host "     openclaw gateway run --force" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  4. Send your Telegram bot:"
 Write-Host "     /analyze-autonomous torvalds/linux" -ForegroundColor Yellow

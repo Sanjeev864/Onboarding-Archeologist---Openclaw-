@@ -38,18 +38,12 @@ if [ ! -d "$PROJECT_ROOT/openclaw/skills/archaeologist" ]; then
     exit 1
 fi
 
-cp "$PROJECT_ROOT/openclaw/skills/archaeologist/skill.yaml" "$SKILL_DIR/" || {
-    echo -e "${RED}✗${NC} Failed to copy skill.yaml"
-    exit 1
-}
-cp "$PROJECT_ROOT/openclaw/skills/archaeologist/handlers.py" "$SKILL_DIR/" || {
-    echo -e "${RED}✗${NC} Failed to copy handlers.py"
-    exit 1
-}
-cp "$PROJECT_ROOT/openclaw/skills/archaeologist/system_prompt.md" "$SKILL_DIR/" || {
-    echo -e "${RED}✗${NC} Failed to copy system_prompt.md"
-    exit 1
-}
+for file in SKILL.md skill.yaml handlers.py system_prompt.md; do
+    cp "$PROJECT_ROOT/openclaw/skills/archaeologist/$file" "$SKILL_DIR/" || {
+        echo -e "${RED}✗${NC} Failed to copy $file"
+        exit 1
+    }
+done
 
 echo -e "${GREEN}✓${NC} Skill files copied"
 
@@ -93,7 +87,7 @@ echo "2. Start the FastAPI backend (in another terminal):"
 echo "   ${YELLOW}cd $PROJECT_ROOT && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000${NC}"
 echo ""
 echo "3. Start OpenClaw Gateway:"
-echo "   ${YELLOW}openclaw run --config openclaw.config.yaml${NC}"
+echo "   ${YELLOW}openclaw gateway run --force${NC}"
 echo ""
 echo "4. Send a Telegram message to your bot with:"
 echo "   ${YELLOW}/analyze-autonomous owner/repo${NC}"

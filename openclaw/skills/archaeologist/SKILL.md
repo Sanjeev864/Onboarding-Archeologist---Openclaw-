@@ -1,8 +1,9 @@
 ---
-name: Onboarding Archaeologist
+name: archaeologist
 description: OpenClaw skill for autonomous repository archaeology and onboarding intelligence
 author: Onboarding Archaeologist Team
 version: 1.0.0
+user-invocable: true
 ---
 
 # Onboarding Archaeologist
