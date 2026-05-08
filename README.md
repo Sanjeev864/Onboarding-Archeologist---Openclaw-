@@ -1,14 +1,13 @@
-````markdown id="l0pjx4"
 # 🏺 Onboarding Archaeologist — OpenClaw Edition
 
 > AI-powered autonomous repository archaeology for faster developer onboarding, architectural understanding, and engineering intelligence.
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.12-blue?style=for-the-badge&logo=python)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi)
+![Python](https://img.shields.io/badge/Python-3.12-blue?style=for-the-badge\&logo=python)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge\&logo=fastapi)
 ![OpenClaw](https://img.shields.io/badge/OpenClaw-Agentic-orange?style=for-the-badge)
-![Telegram](https://img.shields.io/badge/Telegram-Bot-2CA5E0?style=for-the-badge&logo=telegram)
+![Telegram](https://img.shields.io/badge/Telegram-Bot-2CA5E0?style=for-the-badge\&logo=telegram)
 ![Status](https://img.shields.io/badge/Status-Operational-success?style=for-the-badge)
 
 </div>
@@ -21,13 +20,13 @@ Modern repositories are becoming increasingly difficult to understand.
 
 New contributors often struggle with:
 
-- Hidden architectural decisions
-- Poor onboarding documentation
-- Knowledge silos
-- Ghost/stale code
-- Bus-factor risks
-- Understanding ownership patterns
-- Incident-generated “scar tissue”
+* Hidden architectural decisions
+* Poor onboarding documentation
+* Knowledge silos
+* Ghost/stale code
+* Bus-factor risks
+* Understanding ownership patterns
+* Incident-generated “scar tissue”
 
 Traditional documentation becomes outdated quickly.
 
@@ -42,13 +41,14 @@ Unlike traditional documentation tools, Onboarding Archaeologist behaves like an
 It doesn’t just summarize repositories.
 
 It:
-- reasons about architecture
-- evaluates engineering risks
-- generates onboarding journeys
-- tracks ownership concentration
-- detects ghost code
-- exposes technical debt
-- provides explainable decision traces
+
+* reasons about architecture
+* evaluates engineering risks
+* generates onboarding journeys
+* tracks ownership concentration
+* detects ghost code
+* exposes technical debt
+* provides explainable decision traces
 
 ---
 
@@ -56,15 +56,15 @@ It:
 
 The system consists of 7 specialized autonomous agents:
 
-| Agent | Responsibility |
-|---|---|
-| `perception` | Understands repository structure and architecture |
-| `decisions` | Identifies architectural decisions and tradeoffs |
-| `ownership` | Detects contributor concentration and ownership risks |
-| `ghost_code` | Finds stale, abandoned, or unused code |
-| `bus_factor` | Evaluates dependency on individual contributors |
-| `scar_tissue` | Detects fragile incident-driven code patterns |
-| `onboarding` | Generates adaptive onboarding paths |
+| Agent         | Responsibility                                        |
+| ------------- | ----------------------------------------------------- |
+| `perception`  | Understands repository structure and architecture     |
+| `decisions`   | Identifies architectural decisions and tradeoffs      |
+| `ownership`   | Detects contributor concentration and ownership risks |
+| `ghost_code`  | Finds stale, abandoned, or unused code                |
+| `bus_factor`  | Evaluates dependency on individual contributors       |
+| `scar_tissue` | Detects fragile incident-driven code patterns         |
+| `onboarding`  | Generates adaptive onboarding paths                   |
 
 ---
 
@@ -86,7 +86,7 @@ SQLite Evidence Store
 Evidence Oracle
         ↓
 React Dashboard + OpenClaw Interface
-````
+```
 
 The MVP intentionally uses deterministic git-history heuristics first.
 The next evolution introduces local LLM-based evidence summarization and ranking for deeper architectural intelligence.
@@ -337,4 +337,3 @@ MIT License
 Onboarding Archaeologist uncovers it.”
 
 </div>
-```
